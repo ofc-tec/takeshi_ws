@@ -159,6 +159,65 @@ ros2 launch hsrb_moveit_config \
 
 This is our initial reference configuration for testing Takeshi's simulation, controllers, and MoveIt 2.
 
+### Run the behavior tree
+
+The `takeshi_tree` package provides a test behavior tree that moves the arm to
+`go`, navigates to `living_room`, and then moves the head to pan `0.0` radians
+and tilt `-0.2` radians.
+
+From a workspace build, source the ROS 2 and workspace setup files:
+
+```bash
+source /opt/ros/jazzy/setup.bash
+source ~/takeshi_ws/install/setup.bash
+```
+
+Ensure the known-locations file exists at
+`~/.takeshi/rc_2025_known_locations.yaml`. It must contain a `living_room`
+entry for navigation to work.
+
+In separate terminals, start the required systems:
+
+1. Start the Toyota HSR simulation:
+
+```bash
+source /opt/ros/jazzy/setup.bash
+source ~/takeshi_ws/install/setup.bash
+
+ros2 launch hsrb_gazebo_launch \
+    hsrb_apartment_world.launch.py
+```
+
+2. Start MoveIt 2:
+
+```bash
+source /opt/ros/jazzy/setup.bash
+source ~/takeshi_ws/install/setup.bash
+
+ros2 launch hsrb_moveit_config \
+    hsrb_demo.launch.py \
+    use_sim_time:=true
+```
+
+3. Build and run the behavior tree:
+
+```bash
+cd ~/takeshi_ws
+
+colcon build \
+    --packages-select takeshi_tree \
+    --symlink-install
+
+source ~/takeshi_ws/install/setup.bash
+
+ros2 run takeshi_tree task_manager
+```
+
+The behavior tree runs the arm, navigation, and head behaviors in sequence.
+Watch the terminal output for `MoveIt goal accepted`, `MoveIt result`, and
+navigation status messages. The head behavior uses the MoveIt `head` planning
+group and targets `head_pan_joint` and `head_tilt_joint`.
+
 ### RC2025 World
 
 Our next integration will reuse the existing RC2025 Gazebo Sim environment developed for Festeshi.
