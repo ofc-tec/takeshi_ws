@@ -8,6 +8,7 @@ from pathlib import Path
 import rclpy
 from rclpy.node import Node
 from rclpy.executors import MultiThreadedExecutor
+from rclpy.parameter import Parameter
 
 import yaml
 
@@ -64,6 +65,13 @@ class BTExecutor(Node):
         self.tree = py_trees_ros.trees.BehaviourTree(root)
         try:
             self.tree.setup(node=None, node_name="tree", timeout=15.0)
+            result, = self.tree.node.set_parameters([
+                Parameter("default_snapshot_stream", value=True),
+            ])
+            if not result.successful:
+                self.get_logger().warn(f"Cannot enable tree snapshots: {result.reason}")
+            else:
+                self.get_logger().info("Tree introspection: /tree/snapshots")
         except Exception as e:
             self.get_logger().error(f"[bt_executor] Error in tree.setup(): {e}")
 
@@ -97,8 +105,15 @@ class BTExecutor(Node):
 def main(args=None):
     rclpy.init(args=args)
 
-    node = BTExecutor()
+    try:
+        node = BTExecutor()
+    except ValueError as error:
+        rclpy.logging.get_logger("bt_executor_main").error(str(error))
+        rclpy.try_shutdown()
+        return 1
     node.get_logger().info("[bt_executor] Starting Behavior Tree...")
+    steps = " -> ".join(child.name for child in node.tree.root.decorated.children)
+    node.get_logger().info(f"[bt_executor] Sequence: {steps}")
 
     executor = MultiThreadedExecutor()
     executor.add_node(node)
@@ -113,11 +128,11 @@ def main(args=None):
             node.tick_tree()
             time.sleep(0.05)
     except KeyboardInterrupt:
-        node.get_logger().info("[bt_executor] KeyboardInterrupt, shutting down...")
+        pass
     finally:
         executor.shutdown()
         node.destroy_node()
-        rclpy.shutdown()
+        rclpy.try_shutdown()
 
 
 if __name__ == "__main__":

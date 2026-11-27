@@ -162,8 +162,8 @@ This is our initial reference configuration for testing Takeshi's simulation, co
 ### Run the behavior tree
 
 The `takeshi_tree` package provides a test behavior tree that moves the arm to
-`go`, navigates to `living_room`, and then moves the head to pan `0.0` radians
-and tilt `-0.2` radians.
+`go`, navigates to `living_room`, moves the head to pan `0.0` radians and
+tilt `-0.2` radians, then detects a cup and approaches it with MoveIt.
 
 From a workspace build, source the ROS 2 and workspace setup files:
 
@@ -213,24 +213,30 @@ source ~/takeshi_ws/install/setup.bash
 ros2 run takeshi_tree task_manager
 ```
 
-The behavior tree runs the arm, navigation, and head behaviors in sequence.
+The behavior tree runs the arm, navigation, head, detection, and pregrasp
+behaviors in sequence.
 Watch the terminal output for `MoveIt goal accepted`, `MoveIt result`, and
 navigation status messages. The head behavior uses the MoveIt `head` planning
 group and targets `head_pan_joint` and `head_tilt_joint`.
 
 ### RC2025 World
 
-Our next integration will reuse the existing RC2025 Gazebo Sim environment developed for Festeshi.
+Start the RC2025 world, Toyota HSR simulation and navigation, MoveIt 2, and
+vision from one terminal. The Robotino workspace provides the
+`rto_description` package and the known-locations server.
 
-The RC2025 world belongs to the `rto_description` package in the Robotino workspace.
+```bash
+source ~/robotino_ros2_ws/install/setup.bash
+source ~/takeshi_ws/install/setup.bash
+ros2 launch takeshi_bringup takeshi_launch.launch.py
+```
 
-The objective is to launch:
+Once the controllers and action servers are ready, start the behavior tree
+from another terminal with the same overlays sourced.
 
-- RC2025 Gazebo world
-- Toyota HSR simulation and controllers
-- MoveIt 2
-
-The corresponding launch file will be maintained in `takeshi_bringup`.
+```bash
+ros2 run takeshi_tree task_manager --ros-args -p use_sim_time:=true
+```
 
 ## Development
 

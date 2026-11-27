@@ -19,6 +19,7 @@
   <exec_depend>ament_index_python</exec_depend>
   <exec_depend>hsrb_moveit_config</exec_depend>
   <exec_depend>known_locations_tf_server</exec_depend>
+  <exec_depend>takeshi_tree</exec_depend>
   <export>
     <build_type>ament_cmake</build_type>
   </export>
