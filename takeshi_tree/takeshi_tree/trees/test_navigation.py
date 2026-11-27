@@ -12,10 +12,10 @@ from takeshi_tree.behaviors.move_to_pose import MoveToPose
 
 
 def create_behavior_tree(node):
-    target = node.declare_parameter("target_object", "cup").value.strip()
-    group = node.declare_parameter("planning_group", "arm").value
+    target = node.declare_parameter("target_object", "any").value.strip()
+    group = node.declare_parameter("planning_group", "whole_body").value
     if not target:
-        raise ValueError("target_object must be a YOLO class label")
+        raise ValueError("target_object must be 'any' or a YOLO class label")
     if group not in ("arm", "whole_body"):
         raise ValueError("planning_group must be 'arm' or 'whole_body'")
 

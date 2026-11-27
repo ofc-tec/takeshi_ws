@@ -25,57 +25,65 @@ class ComputePregrasp(py_trees.behaviour.Behaviour):
     def initialise(self):
         self.bb.pregrasp_pose = None
         self.deadline = time.monotonic() + 5.0
-        self.detection = None
+        self.selected_point = None
+        self.candidates = []
         detections = self.bb.detections_log
+        target = self.bb.target_object
         if detections:
             latest = detections[-1]
-            matches = [
-                pose for label, pose in zip(latest["classes"], latest["poses"])
-                if label == self.bb.target_object and pose.header.frame_id
+            self.candidates = [
+                (label, PointStamped(header=pose.header, point=pose.pose.position))
+                for label, pose in zip(latest["classes"], latest["poses"])
+                if (target == "any" or label == target) and pose.header.frame_id
                 and (pose.header.stamp.sec or pose.header.stamp.nanosec)
                 and all(math.isfinite(value) for value in (
                     pose.pose.position.x, pose.pose.position.y, pose.pose.position.z
                 ))
             ]
-            if matches:
-                # The service returns positions in its sensor frame.
-                self.detection = min(
-                    matches,
-                    key=lambda pose: math.hypot(
-                        pose.pose.position.x, pose.pose.position.y, pose.pose.position.z
-                    ),
-                )
-                self.node.get_logger().info(
-                    f"Selected the closest of {len(matches)} valid "
-                    f"{self.bb.target_object!r} detections in "
-                    f"{self.detection.header.frame_id}: {self.detection.pose}"
-                )
-                return
+        if not self.candidates:
+            self.node.get_logger().error(f"No valid 3D detection for {target!r}")
 
-        self.node.get_logger().error(
-            f"No valid 3D detection of {self.bb.target_object!r}"
+    def _select_closest(self):
+        ranked = []
+        for label, candidate in self.candidates:
+            stamp = Time.from_msg(candidate.header.stamp)
+            base_tf = self.tf_buffer.lookup_transform(
+                "base_link", candidate.header.frame_id, stamp
+            )
+            point = do_transform_point(candidate, base_tf)
+            # Keep the detection time for the subsequent odom lookup.
+            point.header.stamp = candidate.header.stamp
+            distance = math.hypot(point.point.x, point.point.y)
+            ranked.append((distance, label, point))
+
+        closest_distance, closest_label, closest_point = min(
+            ranked, key=lambda candidate: candidate[0]
         )
+        self.node.get_logger().info(
+            f"Selected {closest_label!r} in base_link at "
+            f"({closest_point.point.x:.3f}, {closest_point.point.y:.3f}, "
+            f"{closest_point.point.z:.3f}) m, "
+            f"planar distance {closest_distance:.3f} m"
+        )
+        return closest_point
 
     def update(self):
         status = py_trees.common.Status
-        if self.detection is None:
+        if not self.candidates:
             return status.FAILURE
 
-        source = self.detection.header.frame_id
-        stamp = Time.from_msg(self.detection.header.stamp)
         try:
-            sensor_tf = self.tf_buffer.lookup_transform("odom", source, stamp)
+            if self.selected_point is None:
+                self.selected_point = self._select_closest()
+            stamp = Time.from_msg(self.selected_point.header.stamp)
             base_tf = self.tf_buffer.lookup_transform("odom", "base_link", stamp)
         except TransformException as error:
             if time.monotonic() < self.deadline:
                 return status.RUNNING
-            self.node.get_logger().error(f"Cannot transform detection to odom: {error}")
+            self.node.get_logger().error(f"Cannot transform detection: {error}")
             return status.FAILURE
 
-        object_point = do_transform_point(
-            PointStamped(header=self.detection.header, point=self.detection.pose.position),
-            sensor_tf,
-        )
+        object_point = do_transform_point(self.selected_point, base_tf)
         rotation = base_tf.transform.rotation
         _, _, yaw = euler_from_quaternion(
             [rotation.x, rotation.y, rotation.z, rotation.w]
@@ -85,7 +93,7 @@ class ComputePregrasp(py_trees.behaviour.Behaviour):
         x, y, z, w = quaternion_from_euler(math.pi, 0.0, yaw)
         goal = PoseStamped()
         goal.header.frame_id = "odom"
-        goal.header.stamp = self.detection.header.stamp
+        goal.header.stamp = self.selected_point.header.stamp
         goal.pose.position = object_point.point
         goal.pose.position.z += self.clearance
         goal.pose.orientation = Quaternion(x=x, y=y, z=z, w=w)
